@@ -100,6 +100,16 @@ void ShmManager::shutdown()
     {
       delete [](sh->second.addr_sub);
     }
+    
+    if (sh->second.segment)
+    {
+      delete sh->second.segment;
+    }
+
+    if (sh->second.segment_mgr)
+    {
+      delete sh->second.segment_mgr;
+    }
   }
 
   ROS_DEBUG("roscpp shm manager exit!");
@@ -108,15 +118,14 @@ void ShmManager::shutdown()
 void ShmManager::threadFunc()
 {
   sharedmem_transport::SharedMemoryUtil sharedmem_util;
-  L_Subscription subs;
-  L_Subscription::iterator it;
   std::string topic;
 
   while (started_ && ros::ok())
   {
     if (TopicManager::instance()->getNumSubscriptions() > 0)
     {
-      subs = TopicManager::instance()->getAllSubscription();
+      L_Subscription subs = TopicManager::instance()->getAllSubscription();
+      L_Subscription::iterator it;
       if (!g_config_comm.transport_mode && 
         shm_map_.size() < TopicManager::instance()->getNumSubscriptions())
       {
@@ -126,7 +135,8 @@ void ShmManager::threadFunc()
 
           if (g_config_comm.topic_white_list.find(topic) != 
             g_config_comm.topic_white_list.end() || 
-            shm_map_.find(topic) != shm_map_.end())
+            shm_map_.find(topic) != shm_map_.end() ||
+            (*it)->get_publisher_links().size() == 0)
           {
             continue;
           }
@@ -158,6 +168,7 @@ void ShmManager::threadFunc()
             }
             
             ItemShm item;
+            item.segment = segment;
             item.segment_mgr = segment_mgr;
             item.descriptors_sub = descriptors_sub;
             item.queue_size = queue_size;
@@ -171,7 +182,23 @@ void ShmManager::threadFunc()
             item.datatype = sharedmem_util.get_datatype(segment);
             item.message_definition = sharedmem_util.get_msg_def(segment);
 
+            boost::mutex::scoped_lock lock(shm_map_mutex_);
+
             shm_map_[topic] = item;
+          }
+
+          boost::mutex::scoped_lock lock(shm_first_msg_map_mutex_);
+
+          if (shm_skip_first_msg_.find(topic) == shm_skip_first_msg_.end())
+          {
+            if (segment == NULL)
+            {
+              shm_skip_first_msg_[topic] = false;
+            }
+            else
+            {
+              shm_skip_first_msg_[topic] = true;
+            }
           }
         }
       }
@@ -192,40 +219,64 @@ void ShmManager::threadFunc()
               bool exit = false;
               int32_t read_index = -1;
               bool is_new_msg = false;
-              int32_t msg_index ;
-              uint32_t msg_size ;
               M_stringPtr header_ptr(new M_string());
+              ros::VoidConstPtr msg;
+              SerializedMessage m;
+
+              (*header_ptr)["topic"] = shm_map_[topic].topic_name;
+              (*header_ptr)["md5sum"] = shm_map_[topic].md5sum;
+              (*header_ptr)["message_definition"] = shm_map_[topic].message_definition;
+              (*header_ptr)["callerid"] = shm_map_[topic].callerid;
+              (*header_ptr)["type"] = shm_map_[topic].datatype;
 
               while (!exit && started_ && ros::ok()) 
               {
                 {
-                  is_new_msg = shm_map_[topic].segment_mgr->read_data(read_index, 
-                    shm_map_[topic].descriptors_sub, topic, msg_index, msg_size);
+                  if (!((shm_map_[topic].shm_sub_ptr)->get_helper()))
+                  {
+                    continue;
+                  }
+
+                  is_new_msg = shm_map_[topic].segment_mgr->read_data(msg, read_index,
+                    shm_map_[topic].descriptors_sub, shm_map_[topic].addr_sub,
+                    (shm_map_[topic].shm_sub_ptr)->get_helper(), topic, header_ptr);
 
                   // Block needs to be allocated
-                  if (read_index == sharedmem_transport::ROS_SHM_SEGMENT_WROTE_NUM)
+                  if (read_index == sharedmem_transport::ROS_SHM_SEGMENT_WROTE_NUM ||
+                    shm_map_[topic].shm_sub_ptr->get_publisher_links().size() == 0)
                   {
-                    if (shm_map_[topic].addr_sub)
                     {
-                      delete [](shm_map_[topic].addr_sub);
+                      boost::mutex::scoped_lock lock(shm_map_mutex_);
+                      
+                      if (shm_map_[topic].addr_sub)
+                      {
+                        delete [](shm_map_[topic].addr_sub);
+                      }
+                      shm_map_.erase(topic);
                     }
-                    shm_map_.erase(topic);
+                    
+                    {
+                      boost::mutex::scoped_lock lock(shm_first_msg_map_mutex_);
+                      shm_skip_first_msg_.erase(topic);
+                    }
+
+                    is_new_msg = false;
                     exit = true;
                   }
 
                   // New message is coming
-                  if (is_new_msg && msg_size != 0) 
+                  if (is_new_msg)
                   {
-                    (*header_ptr)["topic"] = shm_map_[topic].topic_name;
-                    (*header_ptr)["md5sum"] = shm_map_[topic].md5sum;
-                    (*header_ptr)["message_definition"] = shm_map_[topic].message_definition;
-                    (*header_ptr)["callerid"] = shm_map_[topic].callerid;
-                    (*header_ptr)["type"] = shm_map_[topic].datatype;
-                    boost::shared_array<uint8_t> buffer(shm_map_[topic].addr_sub[msg_index], 
-                      [](uint8_t * buffer) { return buffer; });
+                    if (shm_skip_first_msg_[topic] == true)
+                    {
+                      // Skip first message
+                      shm_skip_first_msg_[topic] = false;
+                      continue;
+                    }
 
-                    shm_map_[topic].shm_sub_ptr->handleMessage(msg_index, SerializedMessage(buffer, msg_size), 
-                      true, true, header_ptr);                        
+                    m.message = msg;
+                    m.type_info = &((shm_map_[topic].shm_sub_ptr)->get_helper()->getTypeInfo());
+                    shm_map_[topic].shm_sub_ptr->handleMessage(m, false, true, header_ptr, NULL);
                   }
                 }
               }

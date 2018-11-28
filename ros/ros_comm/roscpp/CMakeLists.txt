@@ -9,7 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   cpp_common message_generation rosconsole roscpp_serialization roscpp_traits rosgraph_msgs rostime std_msgs xmlrpcpp
 )
 
-set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")
+set(CMAKE_CXX_FLAGS "-g -std=c++11 ${CMAKE_CXX_FLAGS}")
 
 catkin_package_xml()
 # split version in parts and pass to extra file
@@ -163,6 +163,7 @@ target_link_libraries(roscpp
   fastrtps
   fastcdr
   yaml-cpp
+  -lrt
   )
 
 add_library(shm_manager SHARED
@@ -214,8 +215,8 @@ install(FILES transport_mode.yaml
 add_executable(talker test_node/talker.cpp)
 add_executable(listener test_node/listener.cpp)
 
-target_link_libraries(talker ${catkin_LIBRARIES} ${PROJECT_NAME} -lrt)
-target_link_libraries(listener ${catkin_LIBRARIES} ${PROJECT_NAME} -lrt)
+target_link_libraries(talker ${catkin_LIBRARIES} ${PROJECT_NAME})
+target_link_libraries(listener ${catkin_LIBRARIES} ${PROJECT_NAME})
 
 install(TARGETS talker
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}

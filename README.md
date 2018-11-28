@@ -21,7 +21,7 @@ Compared to original ROS, we made the following improvements to enhance its stab
 
 For more details of each feature, please find in the [Design Docs](https://github.com/ApolloAuto/apollo-platform/blob/master/ros/docs/design).
 
-The Apollo team would like to thank everybody in the open source community. The GitHub apollo-platform/ros is based on ROS. Currently, Apollo team maintains this repository. In near future, we’ll send patches back to ROS community.
+The Apollo team would like to thank everybody in the open source community. The GitHub apollo-platform/ros is based on [ROS](https://github.com/ros/ros) and [Fast-RTPS](https://github.com/eProsima/Fast-RTPS). Currently, Apollo team maintains this repository. In near future, we’ll send patches back to the corresponding communities.
 
 ### License
 
@@ -42,7 +42,7 @@ https://github.com/ApolloAuto/apollo-platform/releases
 After having the release package downloaded:
 
 ```
-tar zxvf ros-indigo-apollo-1.0.0.x86_64.tar.gz
+tar zxvf ros-indigo-apollo-2.0.0-x86_64.tar.gz
 rsync -av ros/ /apollo/third_party/ros_x86_64
 source /apollo/third_party/ros_x86_64/setup.bash
 ```
@@ -51,4 +51,4 @@ source /apollo/third_party/ros_x86_64/setup.bash
 
 ### How to Build
 
-If you would like customize and build your own ROS, please reference the [Apollo 1.0 Quick Start for Developers](https://github.com/ApolloAuto/apollo/blob/master/docs/quickstart/apollo_1_0_quick_start_developer.md)
+If you would like customize and build your own ROS, please reference the [Apollo 2.0 Quick Start](https://github.com/ApolloAuto/apollo/blob/master/docs/quickstart/apollo_2_0_quick_start.md)
